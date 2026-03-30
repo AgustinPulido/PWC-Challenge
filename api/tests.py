@@ -74,3 +74,64 @@ class ClientApiTests(TestCase):
         delete_response = self.api.delete("/clients/10")
         self.assertEqual(delete_response.status_code, 204)
         self.assertEqual(Client.objects.count(), 0)
+
+    def test_import_clients_missing_file_returns_400(self):
+        response = self.api.post("/clients/import", {}, format="multipart")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Missing file", response.data["detail"])
+
+    def test_import_clients_invalid_excel_returns_400(self):
+        payload = BytesIO(b"not-an-excel-file")
+        payload.name = "clientes.xlsx"
+
+        response = self.api.post("/clients/import", {"file": payload}, format="multipart")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "Invalid Excel file")
+
+    def test_import_clients_missing_sheet_returns_400(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "OtherSheet"
+        ws.append(["customer_id", "name", "email", "country", "age"])
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        output.name = "clientes.xlsx"
+
+        response = self.api.post("/clients/import", {"file": output}, format="multipart")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "Sheet 'Clientes' not found")
+
+    def test_import_clients_invalid_columns_returns_error_details(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Clientes"
+        ws.append(["id", "name", "email", "country", "age"])
+        ws.append([1, "Alice", "alice@example.com", "AR", 20])
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        output.name = "clientes.xlsx"
+
+        response = self.api.post("/clients/import", {"file": output}, format="multipart")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["summary"]["inserted"], 0)
+        self.assertEqual(response.data["summary"]["errors"], 1)
+        self.assertIn("Invalid columns", response.data["error_details"][0]["errors"][0])
+
+    def test_client_detail_returns_404_for_missing_customer(self):
+        get_response = self.api.get("/clients/999")
+        put_response = self.api.put(
+            "/clients/999",
+            {"name": "Nobody", "email": "nobody@example.com", "country": "AR", "age": 25},
+            format="json",
+        )
+        delete_response = self.api.delete("/clients/999")
+
+        self.assertEqual(get_response.status_code, 404)
+        self.assertEqual(put_response.status_code, 404)
+        self.assertEqual(delete_response.status_code, 404)
