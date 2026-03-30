@@ -6,6 +6,7 @@ from typing import Any
 from django.core.validators import validate_email
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from rest_framework.exceptions import NotFound
 
 from .models import Client
@@ -115,14 +116,23 @@ class ClientService:
                 error_details.append({"customer_id": customer_id, "errors": row_errors})
                 continue
 
-            self.repo.create_client(
-                customer_id=customer_id,
-                name=name,
-                email=email,
-                country=country,
-                age=age,
-            )
-            inserted += 1
+            try:
+                self.repo.create_client(
+                    customer_id=customer_id,
+                    name=name,
+                    email=email,
+                    country=country,
+                    age=age,
+                )
+                inserted += 1
+            except IntegrityError:
+                # Handles race conditions where another request inserted the same ID.
+                error_details.append(
+                    {
+                        "customer_id": customer_id,
+                        "errors": ["customer_id already exists in database"],
+                    }
+                )
 
         total = len(rows)
         return {

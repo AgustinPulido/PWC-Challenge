@@ -44,10 +44,7 @@ class ClientDetailView(APIView):
 
     def delete(self, request, customer_id: int):
         self.service.delete_client(customer_id=customer_id)
-        return Response(
-             {"detail": "The client has been deleted successfully."},
-             status=status.HTTP_204_NO_CONTENT,
-             )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ClientImportView(APIView):

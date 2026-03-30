@@ -1,10 +1,12 @@
 from io import BytesIO
 
+from django.db import IntegrityError
 from django.test import TestCase
 from openpyxl import Workbook
 from rest_framework.test import APIClient
 
 from .models import Client
+from .services import ClientService
 
 
 def build_excel(rows: list[list[object]]) -> BytesIO:
@@ -73,6 +75,7 @@ class ClientApiTests(TestCase):
 
         delete_response = self.api.delete("/clients/10")
         self.assertEqual(delete_response.status_code, 204)
+        self.assertEqual(delete_response.content, b"")
         self.assertEqual(Client.objects.count(), 0)
 
     def test_import_clients_missing_file_returns_400(self):
@@ -135,3 +138,23 @@ class ClientApiTests(TestCase):
         self.assertEqual(get_response.status_code, 404)
         self.assertEqual(put_response.status_code, 404)
         self.assertEqual(delete_response.status_code, 404)
+
+    def test_import_handles_integrity_error_and_reports_row_error(self):
+        class RepoStub:
+            def customer_id_exists(self, *, customer_id: int) -> bool:
+                return False
+
+            def create_client(self, **kwargs):
+                raise IntegrityError("duplicate key")
+
+        service = ClientService(repo=RepoStub())
+        result = service.import_clients(
+            rows=[{"customer_id": 1, "name": "Alice", "email": "alice@example.com", "country": "AR", "age": 20}],
+            columns=["customer_id", "name", "email", "country", "age"],
+        )
+
+        self.assertEqual(result["summary"]["total_records"], 1)
+        self.assertEqual(result["summary"]["inserted"], 0)
+        self.assertEqual(result["summary"]["errors"], 1)
+        self.assertEqual(result["error_details"][0]["customer_id"], 1)
+        self.assertIn("customer_id already exists in database", result["error_details"][0]["errors"])
