@@ -18,6 +18,32 @@ python manage.py migrate
 python manage.py runserver
 ```
 
+## Ejecucion con Docker
+
+### Build de la imagen
+
+```bash
+docker build -t client-import-api .
+```
+
+### Ejecutar el contenedor
+
+```bash
+docker run --rm -p 8000:8000 client-import-api sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+```
+
+La API quedara disponible en `http://localhost:8000`.
+
+### Persistir SQLite entre ejecuciones (opcional)
+
+Si quieres mantener la base de datos entre reinicios, monta un volumen en `/app/db.sqlite3`:
+
+```bash
+docker run --rm -p 8000:8000 -v ${PWD}/db.sqlite3:/app/db.sqlite3 client-import-api sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+```
+
+Sin volumen, la base SQLite se pierde cuando termina el contenedor.
+
 ## Endpoints requeridos
 
 - `POST /clients/import`
